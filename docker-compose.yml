@@ -1,0 +1,108 @@
+x-logging: &logging
+  options:
+    max-size: "256k"
+    max-file: "1"
+  driver: json-file
+
+services:
+  reverse-proxy:
+    restart: always
+    build:
+      context: ./reverse-proxy
+    ports:
+      - "${LISTEN_IP}:${LISTEN_PORT}:80"
+    environment:
+      - UI_BASE_URI=$UI_BASE_URI
+      - API_BASE_URI=$API_BASE_URI
+    logging: *logging
+
+  ui:
+    build:
+      context: ./ui
+      network: host
+      args:
+        - BASE_URI=$UI_BASE_URI
+    restart: always
+    logging: *logging
+    networks:
+      default:
+        ipv4_address: "${STATIC_SUBNET}.101"
+    environment:
+      - API_BASE_URI=$API_BASE_URI
+      - LISTEN_PORT=$LISTEN_PORT
+    volumes:
+      - ./ui/src:/app/src
+      - ./ui/public:/app/public
+
+  backend:
+    build:
+      context: ./backend
+      network: host
+    restart: always
+    environment:
+      - "LOG_LEVEL=INFO"
+      - "API_BASE_URI=$API_BASE_URI"
+      - "OPENAI_BASE_URL=$LLM_API_BASE_URL"
+      - "OPENAI_API_BASE=$LLM_API_BASE_URL"
+      - "OPENAI_API_KEY=$LLM_API_KEY"
+      - "LLM_MODEL=$LLM_MODEL"
+      - "COLPALI_BATCH_SIZE=$COLPALI_BATCH_SIZE"
+      - "COLPALI_BASE_URL=$COLPALI_BASE_URL"
+      - "POSTGRES_HOST=db"
+      - "POSTGRES_PASSWORD=$POSTGRES_PASSWORD"
+      - "POSTGRES_USER=$POSTGRES_USER"
+      - "POSTGRES_DB=$POSTGRES_DB"
+      - "VECTOR_DB_HOST=vector-db"
+    logging: *logging
+    networks:
+      default:
+        ipv4_address: "${STATIC_SUBNET}.102"
+    volumes:
+      - ./backend/src:/app/src
+    ports:
+      - "5678:5678" # debugger
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  db:
+    build:
+      context: ./db
+    restart: always
+    environment:
+      - "POSTGRES_PASSWORD=$POSTGRES_PASSWORD"
+      - "POSTGRES_USER=$POSTGRES_USER"
+      - "POSTGRES_DB=$POSTGRES_DB"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    logging: *logging
+
+  migrations:
+    user: ${MY_UID:-1000}:${MY_GID:-1000}
+    build:
+      context: ./migrations
+    restart: "no"
+    environment:
+      - DATABASE_URL=postgres://$POSTGRES_USER:$POSTGRES_PASSWORD@db:5432/$POSTGRES_DB?sslmode=disable
+    volumes:
+      - ./migrations/:/db/:rw
+    logging: *logging
+
+  vector-db:
+    build:
+      context: ./vector-db
+    restart: always
+    logging: *logging
+    volumes:
+      - "qdrant-data:/qdrant/storage:z"
+
+networks:
+  default:
+    ipam:
+      driver: default
+      config:
+        - subnet: "${STATIC_SUBNET}.0/24"
+          gateway: "${STATIC_SUBNET}.1"
+
+volumes:
+  qdrant-data:
+  postgres-data:

@@ -1,0 +1,32 @@
+services:
+  ui:
+    build:
+      dockerfile: Dockerfile.dev
+    restart: "no"
+    volumes:
+      - ./ui/src:/app/src
+      - ./ui/public:/app/public
+    environment:
+      - API_BASE_URI=$API_BASE_URI
+      - LISTEN_PORT=$LISTEN_PORT
+
+  backend:
+    build:
+      dockerfile: Dockerfile.dev
+    restart: "no"
+    volumes:
+      - ./backend/src:/app/src
+    ports:
+      - "5678:5678" # debugger
+    environment:
+      - "LOG_LEVEL=INFO"
+
+  db:
+    restart: "no"
+    ports:
+      - "5432:5432" # direct access
+
+  vector-db:
+    restart: "no"
+    ports:
+      - "6333:6333" # direct access
